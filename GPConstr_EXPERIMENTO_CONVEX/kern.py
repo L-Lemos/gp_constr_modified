@@ -216,6 +216,17 @@ class kernel_RBF(kernel_Stationary):
         ##        K = self.K_r(r)
         
         return -0.5*self.K(X1, X2)*self.Ri(X1, X2, i)
+    
+    def Ki20(self, X1, X2, i):
+        """ For K = K(X1, X2), X1 = [X1_1, X1_2, ..], X2 = [X2_1, X2_2, ..] etc., return d^2K/dX1_i^2 """
+        assert 1 == 0, 'Trabalhando ainda neste método'
+        dK_dxi = self.Ki0(X1, X2, i)
+        dR_dxi = self.Ri(X1, X2, i)
+        A = -0.5*dK_dxi*dR_dxi
+
+        B = -0.5*self.K(X1, X2)*(2/self.lengthscale[i]**2)
+        
+        return A + B
         
     
     def Kij(self, X1, X2, i, j):
@@ -239,57 +250,57 @@ class kernel_RBF(kernel_Stationary):
         return np.ones(len(X))*const
 
 
-class kernel_Matern52(kernel_Stationary):
-    """
-    Matern 5/2 kernel
-    """
+# class kernel_Matern52(kernel_Stationary):
+#     """
+#     Matern 5/2 kernel
+#     """
     
-    kernel_name = 'Matern52'
+#     kernel_name = 'Matern52'
     
-    def K_r(self, r):
-        """ Kernel as a function of scaled distances """
-        return self.variance*(1 + np.sqrt(5)*r + 5/3*r**2)*np.exp(-np.sqrt(5)*r)
+#     def K_r(self, r):
+#         """ Kernel as a function of scaled distances """
+#         return self.variance*(1 + np.sqrt(5)*r + 5/3*r**2)*np.exp(-np.sqrt(5)*r)
      
-    def dK_dr(self, r):
-        """
-        Derivative w.r.t scaled distances
-        """
-        return -5/3*self.variance*(r + np.sqrt(5)*r**2)*np.exp(-np.sqrt(5)*r)
+#     def dK_dr(self, r):
+#         """
+#         Derivative w.r.t scaled distances
+#         """
+#         return -5/3*self.variance*(r + np.sqrt(5)*r**2)*np.exp(-np.sqrt(5)*r)
         
-    def d2K_drdr(self, r):
-        """
-        Double derivative w.r.t scaled distances
-        """
-        return -5/3*self.variance*(1 + np.sqrt(5)*r - 5*r**2)*np.exp(-np.sqrt(5)*r)
+#     def d2K_drdr(self, r):
+#         """
+#         Double derivative w.r.t scaled distances
+#         """
+#         return -5/3*self.variance*(1 + np.sqrt(5)*r - 5*r**2)*np.exp(-np.sqrt(5)*r)
     
-    def Kii_diag(self, X, i):
-        """ Returns diagonal of Gram matrix of d^2K/dX1_i*dX2_i """
-        const = self.variance*(5/3)*(1/self.lengthscale[i]**2)
-        return np.ones(len(X))*const
+#     def Kii_diag(self, X, i):
+#         """ Returns diagonal of Gram matrix of d^2K/dX1_i*dX2_i """
+#         const = self.variance*(5/3)*(1/self.lengthscale[i]**2)
+        # return np.ones(len(X))*const
     
             
-class kernel_RBF_generic(kernel_Stationary):
-    """
-    RBF kernel, use generic set-up for testing
-    """
+# class kernel_RBF_generic(kernel_Stationary):
+#     """
+#     RBF kernel, use generic set-up for testing
+#     """
     
-    kernel_name = 'RBF_generic'
+#     kernel_name = 'RBF_generic'
     
-    def K_r(self, r):
-        """ Kernel as a function of scaled distances """
-        return self.variance*np.exp(-0.5*r**2)
+#     def K_r(self, r):
+#         """ Kernel as a function of scaled distances """
+#         return self.variance*np.exp(-0.5*r**2)
      
-    def dK_dr(self, r):
-        """
-        Derivative w.r.t scaled distances
-        """
-        return -r*self.K_r(r)
+#     def dK_dr(self, r):
+#         """
+#         Derivative w.r.t scaled distances
+#         """
+#         return -r*self.K_r(r)
     
-    def d2K_drdr(self, r):
-        """
-        Double derivative w.r.t scaled distances
-        """
-        return (r**2 - 1)*self.K_r(r)
+#     def d2K_drdr(self, r):
+#         """
+#         Double derivative w.r.t scaled distances
+#         """
+#         return (r**2 - 1)*self.K_r(r)
 
 # Old kernel class
 # class kernel_RBF():

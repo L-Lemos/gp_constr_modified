@@ -987,7 +987,7 @@ class GPmodel():
         
         C~(XS) | Y
         """
-        assert 1 == 0, 'Como colocar derivada segunda neste def inteiro (_constr_posterior_dist_1)??'
+        
         # Calculations only depending on (X, Y)
         self._prep_Y_centered()
         self._prep_K_w(verbatim = False)
@@ -1002,7 +1002,7 @@ class GPmodel():
             Lmu = np.matrix(self.mean*np.ones(len(XS))).T
             
         else:
-            # Derivative
+            # Derivative (First or Second)
             Lmu = np.matrix(np.zeros(len(XS))).T
             
         # Posterior mean
@@ -1744,15 +1744,22 @@ class GPmodel():
         """
         Return c_v2, c_A2 and c_B2 for constraint distribution
         """
-        assert 1 == 0, 'Como inserir derivada segunda neste def (_constr_prep_1)?'
+        
         if i == 0:
             # Boundedness
             L2T_K_X_XS = np.matrix(self.kernel.K(self.X_training, XS))
             L1L2T_K_XS_XS = np.matrix(self.kernel.K(XS, XS))
         
-        else:
+        elif (i > 0) & (i <= len(self.constr_deriv)):
+            # First derivatives
             L2T_K_X_XS = np.matrix(self.kernel.Ki0(XS, self.X_training, i-1)).T
             L1L2T_K_XS_XS = np.matrix(self.kernel.Kij(XS, XS, i-1, i-1))
+            
+        elif i >= (1 + len(self.constr_deriv)):
+            # Second derivatives
+            assert 1 == 0, 'Trabalhando nestas linhas aqui'
+            L2T_K_X_XS = np.matrix(self.kernel.Ki20(XS, self.X_training, i-len(self.constr_deriv))).T
+            L1L2T_K_XS_XS = np.matrix(self.kernel.Kij(XS, XS, i-len(self.constr_deriv), i-len(self.constr_deriv)))
 
         c_v2 = triang_solve(self.K_w_chol, L2T_K_X_XS) 
         c_A2 = triang_solve(self.K_w_chol, c_v2, trans = True).T 
