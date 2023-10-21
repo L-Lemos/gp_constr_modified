@@ -217,14 +217,32 @@ class kernel_RBF(kernel_Stationary):
         
         return -0.5*self.K(X1, X2)*self.Ri(X1, X2, i)
     
+    def K0j(self, X1, X2, i):
+        """ Overload generic with faster alternative """
+        
+        """ The first derivative of K w.r.t. X2"""
+        
+        return -0.5*self.K(X1, X2)*self.Ri(X2, X1, i).T
+    
     def Ki20(self, X1, X2, i):
         """ For K = K(X1, X2), X1 = [X1_1, X1_2, ..], X2 = [X2_1, X2_2, ..] etc., return d^2K/dX1_i^2 """
-        assert 1 == 0, 'Trabalhando ainda neste método'
+        
         dK_dxi = self.Ki0(X1, X2, i)
         dR_dxi = self.Ri(X1, X2, i)
         A = -0.5*dK_dxi*dR_dxi
 
         B = -0.5*self.K(X1, X2)*(2/self.lengthscale[i]**2)
+        
+        return A + B
+    
+    def K0j2(self, X1, X2, j):
+        """ For K = K(X1, X2), X1 = [X1_1, X1_2, ..], X2 = [X2_1, X2_2, ..] etc., return d^2K/dX2_j^2 """
+        
+        dK_dyj = self.K0j(X1, X2, j)
+        dR_dyj = self.Ri(X2, X1, j).T
+        A = -0.5*dK_dyj*dR_dyj
+
+        B = -0.5*self.K(X1, X2)*(2/self.lengthscale[j]**2)
         
         return A + B
         
@@ -243,6 +261,47 @@ class kernel_RBF(kernel_Stationary):
         F = 1/self.lengthscale[i]**2 if i == j else 0
         K = self.K(X1, X2)
         return K*((1/4)*self.Ri(X1, X2, i)*self.Ri(X1 = X2, X2 = X1, i = j).T + F)    
+
+    def Ki2j2(self, X1, X2, i, j):
+        """ For K = K(X1, X2), X1 = [X1_1, X1_2, ..], X2 = [X2_1, X2_2, ..] etc., return d^4K/dX1_i^2dX2_j^2 """
+          
+        K = self.K(X1, X2)
+        
+        if i == j:
+            F = (2/self.lengthscale[i]**4)*K - (4/self.lengthscale[i]**4)*(X1[:,i].reshape(-1, 1) - X2[:,i].reshape(-1, 1).T)*self.K0j(X1, X2, i)
+        else:
+            F = 0
+
+        A = (0.25*self.Ri(X1, X2, i)*self.Ri(X1, X2, i) - 1/self.lengthscale[i]**2)
+        B = -K/self.lengthscale[j]**2 - 0.5*self.K0j(X1, X2, j)*self.Ri(X2, X1, j).T
+        
+        return K*(A*B) + F
+    
+    def Kij2(self, X1, X2, i, j):
+        """ For K = K(X1, X2), X1 = [X1_1, X1_2, ..], X2 = [X2_1, X2_2, ..] etc., return d^3K/dX1_idX2_j^2 """
+        
+        if i == j:
+            F = (2/self.lengthscale[i]**2)*self.K0j(X1, X2, i)
+        else:
+            F = 0
+
+        d2K_dyj2 = self.K0j2(X1, X2, j)        
+        B = -(1/self.lengthscale[i]**2)*(X1[:,i].reshape(-1, 1) - X2[:,i].reshape(-1, 1).T)*d2K_dyj2
+        
+        return F + B
+    
+    def Ki2j(self, X1, X2, i, j):
+        """ For K = K(X1, X2), X1 = [X1_1, X1_2, ..], X2 = [X2_1, X2_2, ..] etc., return d^3K/dX1_i^2dX2_j """
+        
+        if i == j:
+            F = (2/self.lengthscale[j]**2)*self.K0j(X1, X2, j)
+        else:
+            F = 0
+
+        d2K_dxi2 = self.Ki20(X1, X2, i)        
+        B = (1/self.lengthscale[j]**2)*(X1[:,j].reshape(-1, 1) - X2[:,j].reshape(-1, 1).T)*d2K_dxi2
+        
+        return F + B
 
     def Kii_diag(self, X, i):
         """ Returns diagonal of Gram matrix of d^2K/dX1_i*dX2_i """

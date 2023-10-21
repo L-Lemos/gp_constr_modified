@@ -628,7 +628,8 @@ class GPmodel():
             x_min = x_min_i[i_min]
             
             if self.constr_bounded is None: i_min = i_min + 1
-            assert 1 == 0, 'O que a linha acima quer dizer? Como conciliá-la com derivada segunda'
+            if (self.constr_bounded is None) & (self.constr_deriv is None): i_min = i_min + 1 + len(self.constr_deriv)            
+            
             # Store results
             if min_prob_unconstr_xv is not None:
                 row.append([j, i_min] + list(x_min) + pc_min_i + [pc_xv] + [time.time() - tj])
@@ -1040,7 +1041,7 @@ class GPmodel():
         
         C~(XS) | Y, C
         """
-        assert 1 == 0, 'Como colocar derivada segunda neste def inreiro (_constrprob_xs_2)?'
+        
         # Calculations only depending on (X, Y)
         self._prep_Y_centered()
         self._prep_K_w(verbatim = verbatim)
@@ -1066,9 +1067,16 @@ class GPmodel():
             L2T_K_X_XS = np.matrix(self.kernel.K(self.X_training, XS))
             L1L2T_K_XS_XS_diag = np.matrix(self.kernel.K_diag(XS))
         
-        else:
+        elif (i > 0) & (i <= len(self.constr_deriv)):
+            # First derivatives
             L2T_K_X_XS = np.matrix(self.kernel.Ki0(XS, self.X_training, i-1)).T
             L1L2T_K_XS_XS_diag = np.matrix(self.kernel.Kii_diag(XS, i-1))
+            
+        elif i >= (1 + len(self.constr_deriv)):
+            # Second derivatives            
+            L2T_K_X_XS = np.matrix(self.kernel.Ki20(XS, self.X_training, i-1-len(self.constr_deriv))).T
+            raise NotImplementedError('Como inserir derivada segunda na linha abaixo?????')
+            L1L2T_K_XS_XS_diag = np.matrix(self.kernel.Ki2i2_diag(XS, i-1-len(self.constr_deriv)))            
 
         c_v2 = triang_solve(self.K_w_chol, L2T_K_X_XS) 
         c_A2 = triang_solve(self.K_w_chol, c_v2, trans = True).T 
@@ -1094,14 +1102,14 @@ class GPmodel():
         # Widen intervals with nu
         LB = LB - nu
         UB = UB + nu
-        assert 1 == 0, 'Como colocar derivada segunda no if abaixo?'
+        
         # Prior mean
         if i == 0:
             # Boundedness
             Lmu = np.matrix(self.mean*np.ones(len(XS))).T
             
         else:
-            # Derivative
+            # Derivatives
             Lmu = np.matrix(np.zeros(len(XS))).T
         
         t = time.time()
@@ -1756,10 +1764,9 @@ class GPmodel():
             L1L2T_K_XS_XS = np.matrix(self.kernel.Kij(XS, XS, i-1, i-1))
             
         elif i >= (1 + len(self.constr_deriv)):
-            # Second derivatives
-            assert 1 == 0, 'Trabalhando nestas linhas aqui'
-            L2T_K_X_XS = np.matrix(self.kernel.Ki20(XS, self.X_training, i-len(self.constr_deriv))).T
-            L1L2T_K_XS_XS = np.matrix(self.kernel.Kij(XS, XS, i-len(self.constr_deriv), i-len(self.constr_deriv)))
+            # Second derivatives            
+            L2T_K_X_XS = np.matrix(self.kernel.Ki20(XS, self.X_training, i-1-len(self.constr_deriv))).T
+            L1L2T_K_XS_XS = np.matrix(self.kernel.Ki2j2(XS, XS, i-1-len(self.constr_deriv), i-1-len(self.constr_deriv)))
 
         c_v2 = triang_solve(self.K_w_chol, L2T_K_X_XS) 
         c_A2 = triang_solve(self.K_w_chol, c_v2, trans = True).T 
@@ -1807,24 +1814,40 @@ class GPmodel():
         Lmu : Linear operator applied to GP mean
         """
         m_tot = self._num_virtuial_pts()
-        assert 1 == 0, 'Necessário adaptar este def também para incluir derivada segunda'
+        
         if not self.__has_xv_bounded():
             # Only derivative constraint 
             Lmu = np.matrix(np.zeros(m_tot)).T
             
         else:
-            if not self.__has_xv_deriv():
+            if (not(self.__has_xv_deriv()) and not(self.__has_xv_deriv_2())):
                 # Only boundedness constraint
                 Lmu = np.matrix(self.mean*np.ones(m_tot)).T
                 
-            else:
-                # Both constraints 
+            elif ((self.__has_xv_deriv()) and not(self.__has_xv_deriv_2())):
+                # Only boundedness and first derivative constraints
                 m_0 = self.constr_bounded.Xv.shape[0] # Number of virtual points - boundedness
-                m_1 = m_tot - m_0 # Number of virtual points - derivatives
+                m_1 = self.constr_deriv.Xv.shape[0] # Number of virtual points - first derivatives
+                assert m_1 + m_0 == m_tot, 'Problem: sum of number of bounded XVs and first derivative XVs does not match total number of XVs'
+                
+                Lmu = np.matrix(np.concatenate((self.mean*np.ones(m_0), np.zeros(m_1)), axis=0)).T
+                
+            elif (not(self.__has_xv_deriv()) and (self.__has_xv_deriv_2())):
+                # Only boundedness and second derivative constraints
+                m_0 = self.constr_bounded.Xv.shape[0] # Number of virtual points - boundedness
+                m_1 = self.constr_deriv_2.Xv.shape[0] # Number of virtual points - second derivatives
+                assert m_1 + m_0 == m_tot, 'Problem: sum of number of bounded XVs and second derivative XVs does not match total number of XVs'
+                
+                Lmu = np.matrix(np.concatenate((self.mean*np.ones(m_0), np.zeros(m_1)), axis=0)).T
+            
+            else:
+                # All constraints 
+                m_0 = self.constr_bounded.Xv.shape[0] # Number of virtual points - boundedness
+                m_1 = m_tot - m_0 # Number of virtual points - first and second derivatives
         
                 # Operator applied to mean
                 Lmu = np.matrix(np.concatenate((self.mean*np.ones(m_0), np.zeros(m_1)), axis=0)).T
-        assert 1 == 0, 'Como colocar derivada segunda neste def inteiro (_Lmu)?'
+        
         return Lmu
     
     def _calc_constr_bounds(self):
@@ -1860,7 +1883,7 @@ class GPmodel():
         elif (i>0) & (i<=len(self.constr_deriv)):
             LB = self.constr_deriv[i-1].LB(XS)
             UB = self.constr_deriv[i-1].UB(XS)
-        else:
+        elif i >= (1 + len(self.constr_deriv)):
             LB = self.constr_deriv[i-1-len(self.constr_deriv)].LB(XS)
             UB = self.constr_deriv[i-1-len(self.constr_deriv)].UB(XS)
         
@@ -1893,7 +1916,7 @@ class GPmodel():
         
     def _calc_L2T(self, XX):
         """ Calculate L2^T K_XX_XV for XX = X or XX = XS """
-    
+        
         ls = [] # List of block matrices to concatenate
 
         if self.__has_xv_bounded():
@@ -1910,8 +1933,7 @@ class GPmodel():
             i = 0
             for constr in self.constr_deriv_2:
                 if constr.Xv is not None:
-                    assert 1 == 0, 'Criar um método para a linha abaixo'
-                    ls.append(np.matrix(self.kernel.Ki0(constr.Xv, XX, i)).T)
+                    ls.append(np.matrix(self.kernel.Ki20(constr.Xv, XX, i)).T)
                 i+= 1
 
         return np.block(ls)
@@ -1922,28 +1944,55 @@ class GPmodel():
         if i == 0:
             return self._calc_L2T(XS)
         
-        # i > 0
-        ls = [] # List of block matrices to concatenate
+        elif (i > 0) & (i <= len(self.constr_deriv)):      
+            
+            i = i-1
+            
+            ls = [] # List of block matrices to concatenate
+    
+            if self.__has_xv_bounded():
+                ls.append(np.matrix(self.kernel.Ki0(XS, self.constr_bounded.Xv, i)))
+    
+            if self.__has_xv_deriv():
+                j = 0
+                for constr in self.constr_deriv:
+                    if constr.Xv is not None:
+                        ls.append(np.matrix(self.kernel.Kij(XS, constr.Xv, i, j)))
+    
+                    j+= 1
+                    
+            if self.__has_xv_deriv_2():
+                j = 0
+                for constr in self.constr_deriv_2:
+                    if constr.Xv is not None:                    
+                        ls.append(np.matrix(self.kernel.Kij2(XS, constr.Xv, i, j)))
+    
+                    j+= 1
 
-        if self.__has_xv_bounded():
-            ls.append(np.matrix(self.kernel.Ki0(XS, self.constr_bounded.Xv, i-1)))
-
-        if self.__has_xv_deriv():
-            j = 0
-            for constr in self.constr_deriv:
-                if constr.Xv is not None:
-                    ls.append(np.matrix(self.kernel.Kij(XS, constr.Xv, i-1, j)))
-
-                j+= 1
-                
-        if self.__has_xv_deriv_2():
-            j = 0
-            for constr in self.constr_deriv:
-                if constr.Xv is not None:
-                    assert 1 == 0, 'Criar um método para a linha abaixo'
-                    ls.append(np.matrix(self.kernel.Kij(XS, constr.Xv, i-1, j)))
-
-                j+= 1
+        elif i >= (1 + len(self.constr_deriv)):
+            
+            i = i - (1 + len(self.constr_deriv))
+            
+            ls = [] # List of block matrices to concatenate
+    
+            if self.__has_xv_bounded():
+                ls.append(np.matrix(self.kernel.Ki20(XS, self.constr_bounded.Xv, i)))
+    
+            if self.__has_xv_deriv():
+                j = 0
+                for constr in self.constr_deriv:
+                    if constr.Xv is not None:
+                        ls.append(np.matrix(self.kernel.Ki2j(XS, constr.Xv, i, j)))
+    
+                    j+= 1
+                    
+            if self.__has_xv_deriv_2():
+                j = 0
+                for constr in self.constr_deriv_2:
+                    if constr.Xv is not None:                    
+                        ls.append(np.matrix(self.kernel.Ki2j2(XS, constr.Xv, i, j)))
+    
+                    j+= 1
 
         return np.block(ls)
 
@@ -1951,11 +2000,7 @@ class GPmodel():
     def _calc_L1L2(self):
         """ Calculate L1L2^T K_XV_XV """
 
-        
-        assert 1 == 0, 'Como colocar derivada segunda neste def inteiro (_calc_L1L2)??????'
-
-        if self.__has_xv_bounded():
-            
+        if self.__has_xv_bounded():            
             # Calculate boundedness constraint matrix
             K_xv = np.matrix(self.kernel.K(self.constr_bounded.Xv, self.constr_bounded.Xv))
 
@@ -1969,15 +2014,26 @@ class GPmodel():
                     i+= 1
 
                 K01_xv = np.block(ls)
+                
+            if self.__has_xv_deriv_2():
+                # Calculate cross terms
+                ls = []
+                i = 0
+                for constr in self.constr_deriv_2:
+                    if constr.Xv is not None:
+                        ls.append(np.matrix(self.kernel.Ki20(constr.Xv, self.constr_bounded.Xv, i)).T)
+                    i+= 1
 
-            else:
+                K01d_xv = np.block(ls)
+
+            if (not(self.__has_xv_deriv()) and not(self.__has_xv_deriv_2())):
                 # Only boundedness constraint
                 return K_xv
 
         if self.__has_xv_deriv():
             # Calculate derivative constraint matrix
             ls = []
-
+            
             for i in range(len(self.constr_deriv)):
                 if self.constr_deriv[i].Xv is not None:
                     ls_row = []
@@ -1997,18 +2053,78 @@ class GPmodel():
                 blocks.append([np.block([blanks, tmp])])
 
             K11_xv = np.block(blocks)
+            
+            if self.__has_xv_deriv_2():                
+                # Calculate cross terms
+                ls = []
+                for i in range(len(self.constr_deriv)):
+                    if self.constr_deriv[i].Xv is not None:
+                        ls_row = []
+                        for j in range(len(self.constr_deriv_2)):                            
+                            if self.constr_deriv_2[j].Xv is not None:
+                                ls_row.append(np.matrix(self.kernel.Kij2(self.constr_deriv[i].Xv, self.constr_deriv_2[j].Xv, i, j)))
+                        ls.append(ls_row)
 
-            if not self.__has_xv_bounded():
-                # Only derivative constraints, return K11_xv
+                K11d_xv = np.block(ls)
+
+            if (not(self.__has_xv_bounded()) and not(self.__has_xv_deriv_2())):
+                # Only first derivative constraints, return K11_xv
                 i_lower = np.tril_indices(K11_xv.shape[0], -1)
                 K11_xv[i_lower] = K11_xv.T[i_lower] 
                 return K11_xv
+            
+        if self.__has_xv_deriv_2():
+            # Calculate derivative constraint matrix
+            ls = []
+            
+            for i in range(len(self.constr_deriv_2)):
+                if self.constr_deriv_2[i].Xv is not None:
+                    ls_row = []
+                    for l in range(len(self.constr_deriv_2) - i):
+                        j = l + i
+                        if self.constr_deriv_2[j].Xv is not None:
+                            ls_row.append(np.matrix(self.kernel.Ki2j2(self.constr_deriv_2[i].Xv, self.constr_deriv_2[j].Xv, i, j)))
+                    ls.append(ls_row)
+
+            # Create blocks
+            blocks = [[np.block(ls[0])]]
+            n_cols = blocks[0][0].shape[1]
+            for i in range(len(ls) - 1):
+                tmp = np.block(ls[i+1])
+                n_rows = tmp.shape[0]
+                blanks = np.matrix(np.zeros((n_rows, n_cols - tmp.shape[1])))
+                blocks.append([np.block([blanks, tmp])])
+
+            K1d1d_xv = np.block(blocks)
+
+            if (not(self.__has_xv_bounded()) and not(self.__has_xv_deriv())):
+                # Only second derivative constraints, return K1d1d_xv
+                i_lower = np.tril_indices(K1d1d_xv.shape[0], -1)
+                K1d1d_xv[i_lower] = K1d1d_xv.T[i_lower] 
+                return K1d1d_xv
 
         # Compute full matrix and return
-        blanks = np.matrix(np.zeros((K01_xv.shape[1], K01_xv.shape[0])))
-        K = np.block([[K_xv, K01_xv], [blanks, K11_xv]])
+       
+        if ((self.__has_xv_deriv()) and not(self.__has_xv_deriv_2())):
+            
+            blanks = np.matrix(np.zeros((K01_xv.shape[1], K01_xv.shape[0])))
+            K = np.block([[K_xv, K01_xv], [blanks, K11_xv]])            
+        
+        elif (not(self.__has_xv_deriv()) and (self.__has_xv_deriv_2())):
+            
+            blanks = np.matrix(np.zeros((K01d_xv.shape[1], K01d_xv.shape[0])))
+            K = np.block([[K_xv, K01d_xv], [blanks, K1d1d_xv]])
+            
+        elif ((self.__has_xv_deriv()) and (self.__has_xv_deriv_2())):
+           
+            blanks1 = np.matrix(np.zeros((K01_xv.shape[1], K01_xv.shape[0])))
+            blanks2 = np.matrix(np.zeros((K01d_xv.shape[1], K01d_xv.shape[0])))
+            blanks3 = np.matrix(np.zeros((K11d_xv.shape[1], K11d_xv.shape[0])))
+            K = np.block([[K_xv, K01_xv, K01d_xv], [blanks1, K11_xv, K11d_xv],[blanks2,blanks3,K1d1d_xv]])
+       
         i_lower = np.tril_indices(K.shape[0], -1)
-        K[i_lower] = K.T[i_lower] 
+        K[i_lower] = K.T[i_lower]
+        
         return K
     
     def _delete_xv(self):
