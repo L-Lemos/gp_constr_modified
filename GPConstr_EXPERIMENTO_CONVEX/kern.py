@@ -264,18 +264,35 @@ class kernel_RBF(kernel_Stationary):
 
     def Ki2j2(self, X1, X2, i, j):
         """ For K = K(X1, X2), X1 = [X1_1, X1_2, ..], X2 = [X2_1, X2_2, ..] etc., return d^4K/dX1_i^2dX2_j^2 """
-          
+        
         K = self.K(X1, X2)
         
-        if i == j:
-            F = (2/self.lengthscale[i]**4)*K - (4/self.lengthscale[i]**4)*(X1[:,i].reshape(-1, 1) - X2[:,i].reshape(-1, 1).T)*self.K0j(X1, X2, i)
-        else:
-            F = 0
-
-        A = (0.25*self.Ri(X1, X2, i)*self.Ri(X1, X2, i) - 1/self.lengthscale[i]**2)
-        B = -K/self.lengthscale[j]**2 - 0.5*self.K0j(X1, X2, j)*self.Ri(X2, X1, j).T
+        ##############
         
-        return K*(A*B) + F
+        # if i == j:
+        #     F = (2/self.lengthscale[j]**4)*K - (4/self.lengthscale[i]**4)*(X1[:,i].reshape(-1, 1) - X2[:,i].reshape(-1, 1).T)*self.K0j(X1, X2, i)
+        # else:
+        #     F = 0
+
+        # A = (self.Ri(X1, X2, i)*self.Ri(X1, X2, i)*0.25*self.lengthscale[i]**2 - 1)
+        # B = (self.Ri(X1, X2, j)*self.Ri(X1, X2, j)*0.25*self.lengthscale[j]**2 - 1)
+        # C = K/self.lengthscale[j]**2/self.lengthscale[i]**2
+        
+        # return A*B*C + F
+        
+        ##############
+        
+        alpha_i = (X1[:,i].reshape(-1, 1) - X2[:,i].reshape(-1, 1).T)*(X1[:,i].reshape(-1, 1) - X2[:,i].reshape(-1, 1).T)/self.lengthscale[i]**2 - 1
+        alpha_j = (X1[:,j].reshape(-1, 1) - X2[:,j].reshape(-1, 1).T)*(X1[:,j].reshape(-1, 1) - X2[:,j].reshape(-1, 1).T)/self.lengthscale[j]**2 - 1
+        
+        B1 = alpha_i*alpha_j*K/(self.lengthscale[i]**2)/(self.lengthscale[j]**2)
+        
+        if i == j:
+            A1 = -(4/self.lengthscale[i]**4)*(X1[:,j].reshape(-1, 1) - X2[:,j].reshape(-1, 1).T)*self.K0j(X1,X2,j) + 2*K/self.lengthscale[j]**4
+        else:
+            A1 = 0
+        
+        return A1 + B1
     
     def Kij2(self, X1, X2, i, j):
         """ For K = K(X1, X2), X1 = [X1_1, X1_2, ..], X2 = [X2_1, X2_2, ..] etc., return d^3K/dX1_idX2_j^2 """
@@ -306,6 +323,11 @@ class kernel_RBF(kernel_Stationary):
     def Kii_diag(self, X, i):
         """ Returns diagonal of Gram matrix of d^2K/dX1_i*dX2_i """
         const = self.variance/(self.lengthscale[i]**2)
+        return np.ones(len(X))*const
+    
+    def Ki2i2_diag(self, X, i):
+        """ Returns diagonal of Gram matrix of d^4K/dX1_i^2*dX2_i^2 """
+        const = 3*self.variance/(self.lengthscale[i]**4)
         return np.ones(len(X))*const
 
 

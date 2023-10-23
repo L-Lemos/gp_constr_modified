@@ -605,8 +605,14 @@ class GPmodel():
                 if Omega is None:
                     success, x_min, pc_min = self._argmin_pc_subop(i, nu, bounds, opt_method, moment_approximation, sampling_alg, moment_alg, False, num_samples)
                 else:
-                    pc_min, x_min = self._argmin_pc_subop_finite(i, nu, Omega, batch_size, sampling_alg, num_samples, moment_approximation, moment_alg)
-                    success = True
+                    success = False
+                    while not(success):
+                        pc_min, x_min = self._argmin_pc_subop_finite(i, nu, Omega, batch_size, sampling_alg, num_samples, moment_approximation, moment_alg)
+                        if np.isnan(pc_min):
+                            success = False
+                            print('Error while calculating pc_min')
+                        else:
+                            success = True                    
 
                 if success:
                     pc_min_i.append(pc_min)
@@ -1075,7 +1081,6 @@ class GPmodel():
         elif i >= (1 + len(self.constr_deriv)):
             # Second derivatives            
             L2T_K_X_XS = np.matrix(self.kernel.Ki20(XS, self.X_training, i-1-len(self.constr_deriv))).T
-            raise NotImplementedError('Como inserir derivada segunda na linha abaixo?????')
             L1L2T_K_XS_XS_diag = np.matrix(self.kernel.Ki2i2_diag(XS, i-1-len(self.constr_deriv)))            
 
         c_v2 = triang_solve(self.K_w_chol, L2T_K_X_XS) 
@@ -1118,7 +1123,7 @@ class GPmodel():
         
         # Posterior standard deviation
         #std = np.sqrt(np.diagonal(c_Sigma))
-        std = np.array(np.sqrt(c_Sigma_diag)).flatten()
+        std = np.array(np.sqrt(c_Sigma_diag)).flatten()        
 
         # Calculate probability that the constraint holds at each XS individually 
         # for each sample C_j and take the average over C_j
@@ -1772,6 +1777,11 @@ class GPmodel():
         c_A2 = triang_solve(self.K_w_chol, c_v2, trans = True).T 
         c_B2 = L1L2T_K_XS_XS - c_v2.T*c_v2
         
+        # if not(np.all(np.linalg.eigvals(c_v2.T*c_v2) > 0)) or not(np.all(np.linalg.eigvals(c_B2) > 0)):
+        #     print('Not positive definite')
+        # else:
+        #     print('Positive definite')
+        
         return c_v2, c_A2, c_B2
     
     def _constr_prep_2(self, XS, i, c_v2, c_A2, c_B2):
@@ -1827,15 +1837,25 @@ class GPmodel():
             elif ((self.__has_xv_deriv()) and not(self.__has_xv_deriv_2())):
                 # Only boundedness and first derivative constraints
                 m_0 = self.constr_bounded.Xv.shape[0] # Number of virtual points - boundedness
-                m_1 = self.constr_deriv.Xv.shape[0] # Number of virtual points - first derivatives
-                assert m_1 + m_0 == m_tot, 'Problem: sum of number of bounded XVs and first derivative XVs does not match total number of XVs'
+                
+                m_1 = 0
+                for constr in self.constr_deriv:
+                    if constr.Xv is not None:
+                        m_1 = m_1 + constr.Xv.shape[0]
+                        
+                assert m_1 + m_0 == m_tot, 'Problem: sum of number of bounded XVs and first derivative XVs does not match total number of XVs'                
                 
                 Lmu = np.matrix(np.concatenate((self.mean*np.ones(m_0), np.zeros(m_1)), axis=0)).T
                 
             elif (not(self.__has_xv_deriv()) and (self.__has_xv_deriv_2())):
                 # Only boundedness and second derivative constraints
                 m_0 = self.constr_bounded.Xv.shape[0] # Number of virtual points - boundedness
-                m_1 = self.constr_deriv_2.Xv.shape[0] # Number of virtual points - second derivatives
+                
+                m_1 = 0
+                for constr in self.constr_deriv_2:
+                    if constr.Xv is not None:
+                        m_1 = m_1 + constr.Xv.shape[0]                
+                
                 assert m_1 + m_0 == m_tot, 'Problem: sum of number of bounded XVs and second derivative XVs does not match total number of XVs'
                 
                 Lmu = np.matrix(np.concatenate((self.mean*np.ones(m_0), np.zeros(m_1)), axis=0)).T
@@ -2076,7 +2096,7 @@ class GPmodel():
         if self.__has_xv_deriv_2():
             # Calculate derivative constraint matrix
             ls = []
-            
+            aa = max([self.constr_deriv_2[i].Xv.shape[0] if self.constr_deriv_2[i].Xv.shape[0] is not None else 0 for i in range(len(self.constr_deriv_2))])
             for i in range(len(self.constr_deriv_2)):
                 if self.constr_deriv_2[i].Xv is not None:
                     ls_row = []
@@ -2104,23 +2124,28 @@ class GPmodel():
                 return K1d1d_xv
 
         # Compute full matrix and return
-       
-        if ((self.__has_xv_deriv()) and not(self.__has_xv_deriv_2())):
+        
+        if (self.__has_xv_bounded()) and ((self.__has_xv_deriv()) and not(self.__has_xv_deriv_2())):
             
             blanks = np.matrix(np.zeros((K01_xv.shape[1], K01_xv.shape[0])))
             K = np.block([[K_xv, K01_xv], [blanks, K11_xv]])            
         
-        elif (not(self.__has_xv_deriv()) and (self.__has_xv_deriv_2())):
+        elif (self.__has_xv_bounded()) and (not(self.__has_xv_deriv()) and (self.__has_xv_deriv_2())):
             
             blanks = np.matrix(np.zeros((K01d_xv.shape[1], K01d_xv.shape[0])))
             K = np.block([[K_xv, K01d_xv], [blanks, K1d1d_xv]])
             
-        elif ((self.__has_xv_deriv()) and (self.__has_xv_deriv_2())):
+        elif (self.__has_xv_bounded()) and ((self.__has_xv_deriv()) and (self.__has_xv_deriv_2())):
            
             blanks1 = np.matrix(np.zeros((K01_xv.shape[1], K01_xv.shape[0])))
             blanks2 = np.matrix(np.zeros((K01d_xv.shape[1], K01d_xv.shape[0])))
             blanks3 = np.matrix(np.zeros((K11d_xv.shape[1], K11d_xv.shape[0])))
             K = np.block([[K_xv, K01_xv, K01d_xv], [blanks1, K11_xv, K11d_xv],[blanks2,blanks3,K1d1d_xv]])
+            
+        elif not(self.__has_xv_bounded()) and ((self.__has_xv_deriv()) and (self.__has_xv_deriv_2())):
+            
+            blanks = np.matrix(np.zeros((K11d_xv.shape[1], K11d_xv.shape[0])))
+            K = np.block([[K11_xv, K11d_xv],[blanks,K1d1d_xv]])
        
         i_lower = np.tril_indices(K.shape[0], -1)
         K[i_lower] = K.T[i_lower]
