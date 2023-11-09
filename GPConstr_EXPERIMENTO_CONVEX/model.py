@@ -1338,8 +1338,8 @@ class GPmodel():
             theta = np.array([self.likelihood] + list(self.kernel.get_params()))
         
         # Run optimizer
-        res = optimize.minimize(optfun, theta, args=fix_likelihood, jac = optfun_grad, bounds=bounds, method = 'L-BFGS-B')
-        # res = optimize.minimize(optfun, theta, args=fix_likelihood, jac = optfun_grad, bounds=bounds, method = opt_method)
+        # res = optimize.minimize(optfun, theta, args=fix_likelihood, jac = optfun_grad, bounds=bounds, method = 'L-BFGS-B')
+        res = optimize.minimize(optfun, theta, args=fix_likelihood, jac = optfun_grad, bounds=bounds, method = opt_method)
 
         return res
     
