@@ -195,7 +195,9 @@ def gp_active_learning(city, case, trial, scaler, numcores_input=15, is_parallel
                 # Get samples    
                 x_sample = maximin_dist(x_simulated, numcores_input, x_train.shape[1])
                                           
-        
+
+        x_sample = np.round(x_sample,2) # Round, helps finding redundant points in the next steps
+      
         # Update list of already simulated points
         x_simulated = np.concatenate([x_simulated,x_sample],axis=0)
 
@@ -230,9 +232,7 @@ def gp_active_learning(city, case, trial, scaler, numcores_input=15, is_parallel
         y_train = np.append(y_train, solfrac, axis=0)
             
         y_rae_old = y_rae.copy()
-
-        x_train = np.round(x_train,2) # Round, helps finding redundant points in the next steps
-
+        
         # Create model again
         model = constrained_gp_model(x_train.shape[1],unconstrained,first_deriv,second_deriv)  
     
